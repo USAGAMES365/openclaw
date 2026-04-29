@@ -1,0 +1,47 @@
+name: Daily Repo Sync to Root
+on:
+  schedule:
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  sync-to-origin:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
+    steps:
+      - name: Checkout THIS repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Gets full history to avoid push conflicts
+
+      - name: Sync External Files to Root
+        run: |
+          # 1. Clone the external repo to a temporary location
+          git clone https://github.com/openclaw/openclaw.git temp_external
+          
+          # 2. Delete everything in your root EXCEPT .git and .github
+          # We keep .github so this workflow file doesn't delete itself!
+          find . -maxdepth 1 ! -name '.' ! -name '..' ! -name '.git' ! -name '.github' ! -name 'temp_external' -exec rm -rf {} +
+          
+          # 3. Move files from temp folder to root
+          cp -rn temp_external/* .
+          cp -rn temp_external/.* . 2>/dev/null || true # Move hidden files like .env or .gitignore
+          
+          # 4. Clean up the temp folder
+          rm -rf temp_external
+      
+      - name: Commit and Push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          
+          # Check if there are changes before committing
+          if git diff --quiet && git diff --staged --quiet; then
+            echo "No changes to sync."
+          else
+            git commit -m "Sync: Updated root with latest external code"
+            git push origin main # Change 'main' to your branch name if different
+          fi
